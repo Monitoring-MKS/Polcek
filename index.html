@@ -3,204 +3,232 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>POLCEK - WH MAKASSAR</title>
+    <title>POLCEK MASTER - WH MAKASSAR</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        :root { --green: #70ad47; --blue: #5b9bd5; --yellow: #ffc000; --bg-grey: #b0b0b0; }
-        * { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
-        body { background-color: #2c3e50; margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-
-        .app-container { width: 100%; max-width: 400px; height: 100vh; max-height: 800px; background: var(--bg-grey); display: flex; flex-direction: column; padding: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); position: relative; overflow: hidden; }
-        
-        /* Loader Pop Up */
-        #loader {
-            display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.8); z-index: 1000; flex-direction: column;
-            justify-content: center; align-items: center; color: white;
-        }
-        .spinner { width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid var(--green); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 10px; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-
-        /* Camera Scanner Styles */
-        #reader-container { 
-            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-            background: black; z-index: 2000; flex-direction: column;
-        }
-        #reader { width: 100%; flex: 1; }
-        .cam-controls { padding: 15px; background: #333; display: flex; justify-content: center; }
-
-        .header-title { background: linear-gradient(145deg, #333, #000); color: white; text-align: center; padding: 10px; border-radius: 8px; font-weight: bold; margin-bottom: 10px; font-size: 0.9rem;}
-        
-        .tab-menu { display: flex; gap: 4px; margin-bottom: 10px; }
-        .tab-btn { flex: 1; padding: 8px; border: none; border-radius: 4px; color: white; font-size: 10px; font-weight: bold; cursor: pointer; opacity: 0.5; }
-        .tab-btn.active { opacity: 1; border: 1px solid white; }
-        .btn-master { background-color: var(--green); }
-        .btn-polcek { background-color: var(--blue); }
-        .btn-report { background-color: var(--yellow); color: #333; }
-
-        .content-area { flex: 1; overflow-y: auto; }
-        .input-row { display: flex; align-items: center; margin-bottom: 6px; gap: 8px; }
-        .label-tag { width: 90px; padding: 8px; font-size: 9px; color: white; font-weight: bold; border-radius: 4px; }
-        input { flex: 1; padding: 8px; border-radius: 4px; border: 1px solid #ccc; font-size: 13px; }
+        :root { --green: #70ad47; --bg-grey: #b0b0b0; --red: #ff0000; }
+        * { box-sizing: border-box; font-family: 'Arial Black', sans-serif; }
+        body, html { margin: 0; padding: 0; background: #2c3e50; height: 100vh; overflow: hidden; }
+        .container { width: 100vw; height: 100vh; background: var(--bg-grey); display: flex; flex-direction: column; padding: 15px; position: relative; }
+        .header { background: black; color: white; text-align: center; padding: 10px; border-radius: 10px; margin-bottom: 15px; }
+        .input-row { display: flex; align-items: center; margin-bottom: 8px; gap: 8px; }
+        .label-tag { width: 130px; padding: 10px; font-size: 10px; color: white; border-radius: 5px; font-weight: bold; background: var(--green); }
+        input { flex: 1; padding: 10px; border-radius: 5px; border: 1px solid #777; font-size: 14px; font-weight: bold; }
         input[readonly] { background: #dcdcdc; }
-
-        .btn-scan { background: #444; color: white; border: none; padding: 8px; border-radius: 4px; cursor: pointer; font-size: 12px; }
-        .footer-btns { display: flex; gap: 6px; margin-top: 15px; }
-        .btn-action { background: #000; color: white; padding: 12px; border-radius: 4px; border: none; font-size: 11px; font-weight: bold; cursor: pointer; flex: 1; }
+        .footer-btns { display: flex; gap: 8px; margin-top: 15px; }
+        .btn { flex: 1; padding: 15px; border-radius: 5px; border: 1px solid white; color: white; cursor: pointer; font-weight: bold; font-size: 11px; background: black; }
+        .btn-scan { background: #444; border: none; padding: 8px 12px; color: white; border-radius: 5px; }
+        #loader { display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.8); z-index: 1000; flex-direction: column; justify-content: center; align-items: center; color: white; }
+        #reader-container { display: none; position: fixed; inset: 0; background: black; z-index: 2000; flex-direction: column; }
     </style>
 </head>
 <body onload="initApp()">
 
-<div class="app-container">
-    <div id="loader">
-        <div class="spinner"></div>
-        <span id="loader-text">Loading...</span>
+<div class="container">
+    <div id="loader"><p id="loader-text">Loading Data...</p></div>
+    <div id="reader-container"><div id="reader" style="flex:1"></div><button class="btn" onclick="stopScanner()" style="background:red">BATAL SCAN</button></div>
+
+    <div class="header">MASTER BARCODE</div>
+
+    <div class="input-row">
+        <div class="label-tag">BARCODE DOS</div>
+        <input type="text" id="m_dos" placeholder="Scan Barcode DOS">
+        <button class="btn-scan" onclick="startScanner('m_dos')">📷</button>
     </div>
-
-    <div id="reader-container">
-        <div id="reader"></div>
-        <div class="cam-controls">
-            <button class="btn-action btn-red" onclick="stopScanner()">BATAL SCAN</button>
-        </div>
+    <div class="input-row">
+        <div class="label-tag" style="background: #2980b9;">BARCODE ITEM</div>
+        <input type="text" id="m_item" placeholder="Scan Barcode Item">
+        <button class="btn-scan" onclick="startScanner('m_item')">📷</button>
     </div>
+    <div class="input-row"><div class="label-tag">PLU</div><input type="text" id="m_plu" readonly></div>
+    <div class="input-row"><div class="label-tag">DESCP</div><input type="text" id="m_descp" readonly></div>
+    <div class="input-row"><div class="label-tag">C2</div><input type="text" id="m_c2" readonly></div>
+    <div class="input-row"><div class="label-tag">LOKASI</div><input type="text" id="m_lokasi" readonly></div>
+    <div class="input-row"><div class="label-tag">TAG</div><input type="text" id="m_tag" readonly></div>
 
-    <div class="header-title">POLCEK - WH MAKASSAR</div>
-
-    <div class="tab-menu">
-        <button class="tab-btn btn-master active" onclick="switchTab('master')">MASTER</button>
-        <button class="tab-btn btn-polcek" onclick="switchTab('polcek')">POLCEK</button>
-        <button class="tab-btn btn-report" onclick="switchTab('report')">REPORT</button>
-    </div>
-
-    <div id="master" class="content-area">
-        <div class="input-row">
-            <div class="label-tag btn-master">Barcode Dos</div>
-            <input type="text" id="m_barcode_dos" class="m-in" placeholder="Scan/Ketik...">
-            <button class="btn-scan" onclick="startScanner('m_barcode_dos')">📷</button>
-        </div>
-        <div class="input-row">
-            <div class="label-tag btn-master">Barcode Item</div>
-            <input type="text" id="m_barcode_item" class="m-in" placeholder="Scan/Ketik...">
-            <button class="btn-scan" onclick="startScanner('m_barcode_item')">📷</button>
-        </div>
-        <div class="input-row"><div class="label-tag btn-master">PLU</div><input type="text" id="m_plu" class="m-in" readonly></div>
-        <div class="input-row"><div class="label-tag btn-master">Descp</div><input type="text" id="m_descp" class="m-in" readonly></div>
-        <div class="input-row"><div class="label-tag btn-master">C2</div><input type="text" id="m_c2" class="m-in" readonly></div>
-        <div class="input-row"><div class="label-tag btn-master">Lokasi</div><input type="text" id="m_lokasi" class="m-in" readonly></div>
-        <div class="input-row"><div class="label-tag btn-master">Tag</div><input type="text" id="m_tag" class="m-in" readonly></div>
-        
-        <div class="footer-btns">
-            <button class="btn-action" id="btn-simpan-master" onclick="submitMaster()">SIMPAN DATA</button>
-            <button class="btn-action" style="background:#666" onclick="resetMaster()">CLEAR</button>
-        </div>
+    <div class="footer-btns">
+        <button class="btn" style="background:#2ecc71" onclick="queueMaster()">+SIMPAN DATA </button>
+        <button class="btn" style="background:var(--red)" onclick="syncBatch()">🚀 KIRIM (<span id="q_count">0</span>)</button>
+        <button class="btn" onclick="resetMasterForm()">CLEAR</button>
     </div>
 </div>
 
 <script>
-    const G_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw9RwBGVLMzh-xLHGKOuA-92J5pD-qf7U0oBmZj_PQ1vDffILwBmA8B1Vk4wPG0tfM/exec";
+    const G_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyTwbTbJEtrSyJXq0ERZg6FCj92A3lqOUWColaPmV4Bf1CAIYmuxFG-BCsQuXyb5O8/exec";
     let cachedMasterData = [];
+    let savedBarcodesFromServer = [];
     let html5QrCode;
-    let currentInputTarget = "";
 
-    // 1. Inisialisasi Ambil Data Master
-    async function initApp() {
-        showLoader("Sinkronisasi Master...");
+    // --- AUDIO ---
+    function playSound(type) {
         try {
-            const response = await fetch(G_SCRIPT_URL, {
-                method: 'POST',
-                body: JSON.stringify({ action: "getAllMaster" })
-            });
-            const result = await response.json();
-            if (result.status === "success") cachedMasterData = result.data;
-        } catch (e) { alert("Gagal koneksi ke GSheet!"); }
+            const context = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = context.createOscillator();
+            const gain = context.createGain();
+            osc.connect(gain); gain.connect(context.destination);
+            if (type === 'success') {
+                osc.frequency.setValueAtTime(880, context.currentTime);
+                osc.start(); osc.stop(context.currentTime + 0.1);
+            } else {
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, context.currentTime);
+                osc.start(); osc.stop(context.currentTime + 0.4);
+            }
+        } catch(e) { console.log("Audio Error"); }
+    }
+
+    // --- INIT ---
+    async function initApp() {
+        showLoader("Sinkronisasi Database...");
+        try {
+            const res = await fetch(G_SCRIPT_URL, { method: 'POST', body: JSON.stringify({ action: "getAllMaster" }) });
+            const out = await res.json();
+            if (out.status === "success") {
+                cachedMasterData = out.data;
+                savedBarcodesFromServer = out.savedList;
+                console.log("Master Loaded:", cachedMasterData.length);
+            }
+        } catch (e) { alert("Error: Cek Koneksi / URL Script"); }
         hideLoader();
+        updateBadge();
     }
 
-    // 2. Fungsi Scanner Kamera
-    function startScanner(targetId) {
-        currentInputTarget = targetId;
-        document.getElementById('reader-container').style.display = 'flex';
+// Fungsi ini dipicu otomatis setelah scan atau tekan Enter di Barcode DOS
+function handleDosInput(val) {
+    const barcode = val.trim();
+    if (!barcode) return;
+
+    // 1. CEK KE DATABASE SERVER (Data yang ditarik saat awal buka APK)
+    const sudahAdaDiServer = savedBarcodesFromServer.includes(barcode);
+
+    // 2. CEK KE ANTRIAN LOKAL (Data yang masih parkir di HP belum dikirim)
+    const queue = JSON.parse(localStorage.getItem('q_master') || "[]");
+    const sudahAdaDiAntrian = queue.some(item => item.barcodeDos === barcode);
+
+    if (sudahAdaDiServer || sudahAdaDiAntrian) {
+        playSound('error'); // Bunyi Buzzer Gagal
         
-        html5QrCode = new Html5Qrcode("reader");
-        const config = { fps: 10, qrbox: { width: 250, height: 150 } };
-
-        html5QrCode.start({ facingMode: "environment" }, config, (decodedText) => {
-            document.getElementById(targetId).value = decodedText;
-            stopScanner();
-            // Jika yang di-scan adalah Barcode Item, langsung cari datanya
-            if (targetId === 'm_barcode_item') searchItem(decodedText);
-            // Jika Barcode Dos, pindah fokus ke Item
-            if (targetId === 'm_barcode_dos') document.getElementById('m_barcode_item').focus();
-        });
+        let pesan = sudahAdaDiServer 
+            ? "⚠️ DATA SUDAH ADA DI SHEET!\nBarcode " + barcode + " sudah pernah tersimpan di server."
+            : "⚠️ DATA SUDAH ADA DI ANTRIAN!\nBarcode " + barcode + " sudah diinput tapi belum dikirim.";
+            
+        alert(pesan);
+        
+        // LANGSUNG BERSIHKAN FORM
+        resetMasterForm(); 
+    } else {
+        // Jika aman, pindahkan fokus ke Barcode Item untuk langkah selanjutnya
+        document.getElementById('m_item').focus();
     }
+}
 
-    function stopScanner() {
-        if (html5QrCode) {
-            html5QrCode.stop().then(() => {
-                document.getElementById('reader-container').style.display = 'none';
-            });
-        }
-    }
+// Tambahkan Trigger 'Blur' agar saat petugas klik kolom lain, validasi tetap jalan
+document.getElementById('m_dos').onblur = function() {
+    handleDosInput(this.value);
+};
 
-    // 3. Cari Data di Cache
-    function searchItem(val) {
-        const found = cachedMasterData.find(item => item.barcodeItem.toString().trim() === val.trim());
+    function findItemMaster(val) {
+        const barcode = val.trim();
+        if (!barcode) return;
+
+        const found = cachedMasterData.find(i => i.barcode === barcode);
         if (found) {
             document.getElementById('m_plu').value = found.plu;
             document.getElementById('m_descp').value = found.descp;
             document.getElementById('m_c2').value = found.c2;
             document.getElementById('m_lokasi').value = found.lokasi;
             document.getElementById('m_tag').value = found.tag;
-            document.getElementById('btn-simpan-master').focus();
+            playSound('success');
         } else {
-            alert("Item tidak ada di Master!");
-            document.getElementById('m_barcode_item').value = "";
+            playSound('error');
+            alert("Barcode Item tidak ditemukan di Master!");
+            document.getElementById('m_item').value = "";
         }
     }
 
-    // Input manual via Keyboard (tetap aktif)
-    document.getElementById('m_barcode_item').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') searchItem(e.target.value);
-    });
+    // --- ANTRIAN ---
+    function queueMaster() {
+        const bDos = document.getElementById('m_dos').value.trim();
+        const bItem = document.getElementById('m_item').value.trim();
 
-    // 4. Simpan Data
-    async function submitMaster() {
-        const payload = {
-            action: "saveData",
-            barcodeDos: document.getElementById('m_barcode_dos').value,
-            barcodeItem: document.getElementById('m_barcode_item').value,
+        if (!bDos || !bItem) {
+            playSound('error');
+            return alert("Lengkapi Barcode DOS & ITEM!");
+        }
+
+        const data = {
+            barcodeDos: bDos, barcodeItem: bItem,
             plu: document.getElementById('m_plu').value,
             descp: document.getElementById('m_descp').value,
-            c2: document.getElementById('m_c2').value,
             lokasi: document.getElementById('m_lokasi').value,
+            c2: document.getElementById('m_c2').value,
             tag: document.getElementById('m_tag').value
         };
 
-        if (!payload.barcodeDos || !payload.barcodeItem) return alert("Lengkapi data!");
+        let queue = JSON.parse(localStorage.getItem('q_master') || "[]");
+        queue.push(data);
+        localStorage.setItem('q_master', JSON.stringify(queue));
 
-        showLoader("Menyimpan...");
+        playSound('success');
+        resetMasterForm();
+        updateBadge();
+    }
+
+    async function syncBatch() {
+        const queue = JSON.parse(localStorage.getItem('q_master') || "[]");
+        if (queue.length === 0) return alert("Tidak ada data dikirim.");
+
+        showLoader("Mengirim...");
         try {
-            const res = await fetch(G_SCRIPT_URL, { method: 'POST', body: JSON.stringify(payload) });
-            const result = await res.json();
-            alert(result.message);
-            if (result.status === "success") resetMaster();
-        } catch (e) { alert("Error Simpan!"); }
+            const res = await fetch(G_SCRIPT_URL, { method: 'POST', body: JSON.stringify({ action: "syncBatch", data: queue }) });
+            const out = await res.json();
+            if (out.status === "success") {
+                queue.forEach(i => savedBarcodesFromServer.push(i.barcodeDos));
+                localStorage.setItem('q_master', "[]");
+                updateBadge();
+                alert("Berhasil Terkirim!");
+            }
+        } catch (e) { alert("Gagal Kirim!"); }
         hideLoader();
     }
 
-    function resetMaster() {
-        document.querySelectorAll('.m-in').forEach(i => i.value = '');
-        document.getElementById('m_barcode_dos').focus();
+    // --- UI HELPER ---
+    function updateBadge() {
+        const q = JSON.parse(localStorage.getItem('q_master') || "[]").length;
+        document.getElementById('q_count').innerText = q;
+    }
+
+    function resetMasterForm() {
+        const ids = ['m_dos','m_item','m_plu','m_descp','m_c2','m_lokasi','m_tag'];
+        ids.forEach(id => document.getElementById(id).value = '');
+        document.getElementById('m_dos').focus();
     }
 
     function showLoader(t) { document.getElementById('loader-text').innerText = t; document.getElementById('loader').style.display = 'flex'; }
     function hideLoader() { document.getElementById('loader').style.display = 'none'; }
-    
-    function switchTab(t) {
-        document.querySelectorAll('.content-area').forEach(c => c.style.display = 'none');
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-        document.getElementById(t).style.display = 'block';
-        event.currentTarget.classList.add('active');
+
+    // Event Triggers
+    document.getElementById('m_dos').onkeydown = (e) => { if(e.key === "Enter") handleDosInput(e.target.value); };
+    document.getElementById('m_item').onkeydown = (e) => { if(e.key === "Enter") findItemMaster(e.target.value); };
+
+    function startScanner(tid) {
+        document.getElementById('reader-container').style.display = 'flex';
+        html5QrCode = new Html5Qrcode("reader");
+        html5QrCode.start({ facingMode: "environment" }, { fps: 15, qrbox: 250 }, (txt) => {
+            document.getElementById(tid).value = txt;
+            if(tid === 'm_dos') handleDosInput(txt);
+            if(tid === 'm_item') findItemMaster(txt);
+            stopScanner();
+        }).catch(() => stopScanner());
+    }
+    function stopScanner() { 
+        if(html5QrCode) {
+            html5QrCode.stop().then(() => {
+                document.getElementById('reader-container').style.display='none';
+                html5QrCode = null;
+            });
+        } else {
+            document.getElementById('reader-container').style.display='none';
+        }
     }
 </script>
 </body>
