@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>POLCEK MASTER - WH MAKASSAR</title>
+    <title>MASTER BARCODE DOS - WH MAKASSAR</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         :root { --green: #70ad47; --bg-grey: #b0b0b0; --red: #ff0000; }
         * { box-sizing: border-box; font-family: 'Arial Black', sans-serif; }
@@ -17,16 +18,26 @@
         input[readonly] { background: #dcdcdc; }
         .footer-btns { display: flex; gap: 8px; margin-top: 15px; }
         .btn { flex: 1; padding: 15px; border-radius: 5px; border: 1px solid white; color: white; cursor: pointer; font-weight: bold; font-size: 11px; background: black; }
-        .btn-scan { background: #444; border: none; padding: 8px 12px; color: white; border-radius: 5px; }
+        .btn-scan { background: #444; border: none; padding: 8px 12px; color: white; border-radius: 5px; cursor: pointer; }
+        .btn-scan:hover { background: #666; }
+        .btn:hover { opacity: 0.9; }
         #loader { display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.8); z-index: 1000; flex-direction: column; justify-content: center; align-items: center; color: white; }
         #reader-container { display: none; position: fixed; inset: 0; background: black; z-index: 2000; flex-direction: column; }
+        .spinner { width: 50px; height: 50px; border: 5px solid #f3f3f3; border-top: 5px solid #3498db; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body onload="initApp()">
 
 <div class="container">
-    <div id="loader"><p id="loader-text">Loading Data...</p></div>
-    <div id="reader-container"><div id="reader" style="flex:1"></div><button class="btn" onclick="stopScanner()" style="background:red">BATAL SCAN</button></div>
+    <div id="loader">
+        <div class="spinner"></div>
+        <p id="loader-text">Loading Data...</p>
+    </div>
+    <div id="reader-container">
+        <div id="reader" style="flex:1"></div>
+        <button class="btn" onclick="stopScanner()" style="background:red; margin:10px;">BATAL SCAN</button>
+    </div>
 
     <div class="header">MASTER BARCODE</div>
 
@@ -47,9 +58,9 @@
     <div class="input-row"><div class="label-tag">TAG</div><input type="text" id="m_tag" readonly></div>
 
     <div class="footer-btns">
-        <button class="btn" style="background:#2ecc71" onclick="queueMaster()">+SIMPAN DATA </button>
+        <button class="btn" style="background:#2ecc71" onclick="queueMaster()">+ SIMPAN DATA</button>
         <button class="btn" style="background:var(--red)" onclick="syncBatch()">🚀 KIRIM (<span id="q_count">0</span>)</button>
-        <button class="btn" onclick="resetMasterForm()">CLEAR</button>
+        <button class="btn" style="background:#3498db" onclick="resetMasterForm()">CLEAR</button>
     </div>
 </div>
 
@@ -58,6 +69,54 @@
     let cachedMasterData = [];
     let savedBarcodesFromServer = [];
     let html5QrCode;
+
+    // Fungsi untuk normalisasi barcode (menghilangkan angka 0 di awal)
+    function normalizeBarcode(barcode) {
+        if (!barcode) return barcode;
+        // Hapus angka 0 di awal barcode
+        return barcode.replace(/^0+/, '');
+    }
+
+    // Fungsi untuk mencari barcode dengan berbagai kemungkinan (dengan/sesudah normalisasi)
+    function findBarcodeInMaster(searchBarcode) {
+        if (!searchBarcode) return null;
+        
+        // Cari dengan barcode asli
+        let found = cachedMasterData.find(i => i.barcode === searchBarcode);
+        if (found) return { found, matchedAs: 'original' };
+        
+        // Jika tidak ditemukan, coba normalisasi (hilangkan 0 di awal)
+        const normalizedBarcode = normalizeBarcode(searchBarcode);
+        if (normalizedBarcode !== searchBarcode) {
+            found = cachedMasterData.find(i => i.barcode === normalizedBarcode);
+            if (found) return { found, matchedAs: 'normalized' };
+        }
+        
+        return null;
+    }
+
+    // Fungsi untuk mengecek apakah barcode DOS sudah ada di server atau antrian
+    function isBarcodeExists(barcode) {
+        // Normalisasi barcode untuk pengecekan
+        const normalizedBarcode = normalizeBarcode(barcode);
+        
+        // Cek di server dengan kedua format
+        const existsInServer = savedBarcodesFromServer.some(saved => 
+            saved === barcode || saved === normalizedBarcode || normalizeBarcode(saved) === normalizedBarcode
+        );
+        
+        if (existsInServer) return true;
+        
+        // Cek di antrian lokal
+        const queue = JSON.parse(localStorage.getItem('q_master') || "[]");
+        const existsInQueue = queue.some(item => 
+            item.barcodeDos === barcode || 
+            item.barcodeDos === normalizedBarcode || 
+            normalizeBarcode(item.barcodeDos) === normalizedBarcode
+        );
+        
+        return existsInQueue;
+    }
 
     // --- AUDIO ---
     function playSound(type) {
@@ -76,87 +135,203 @@
         } catch(e) { console.log("Audio Error"); }
     }
 
-    // --- INIT ---
-    async function initApp() {
-        showLoader("Sinkronisasi Database...");
-        try {
-            const res = await fetch(G_SCRIPT_URL, { method: 'POST', body: JSON.stringify({ action: "getAllMaster" }) });
-            const out = await res.json();
-            if (out.status === "success") {
-                cachedMasterData = out.data;
-                savedBarcodesFromServer = out.savedList;
-                console.log("Master Loaded:", cachedMasterData.length);
-            }
-        } catch (e) { alert("Error: Cek Koneksi / URL Script"); }
-        hideLoader();
-        updateBadge();
-    }
-
-// Fungsi ini dipicu otomatis setelah scan atau tekan Enter di Barcode DOS
-function handleDosInput(val) {
-    const barcode = val.trim();
-    if (!barcode) return;
-
-    // 1. CEK KE DATABASE SERVER (Data yang ditarik saat awal buka APK)
-    const sudahAdaDiServer = savedBarcodesFromServer.includes(barcode);
-
-    // 2. CEK KE ANTRIAN LOKAL (Data yang masih parkir di HP belum dikirim)
-    const queue = JSON.parse(localStorage.getItem('q_master') || "[]");
-    const sudahAdaDiAntrian = queue.some(item => item.barcodeDos === barcode);
-
-    if (sudahAdaDiServer || sudahAdaDiAntrian) {
-        playSound('error'); // Bunyi Buzzer Gagal
+    // Fungsi ini dipicu otomatis setelah scan atau tekan Enter di Barcode DOS
+    async function handleDosInput(val) {
+        const originalBarcode = val.trim();
+        if (!originalBarcode) return;
         
-        let pesan = sudahAdaDiServer 
-            ? "⚠️ DATA SUDAH ADA DI SHEET!\nBarcode " + barcode + " sudah pernah tersimpan di server."
-            : "⚠️ DATA SUDAH ADA DI ANTRIAN!\nBarcode " + barcode + " sudah diinput tapi belum dikirim.";
+        // Normalisasi barcode untuk pengecekan
+        const normalizedBarcode = normalizeBarcode(originalBarcode);
+        
+        // Simpan ke input dengan nilai asli dari scan
+        document.getElementById('m_dos').value = originalBarcode;
+        
+        // 1. CEK KE DATABASE SERVER (Data yang ditarik saat awal buka APK)
+        const sudahAdaDiServer = isBarcodeExists(originalBarcode);
+        
+        if (sudahAdaDiServer) {
+            playSound('error');
             
-        alert(pesan);
-        
-        // LANGSUNG BERSIHKAN FORM
-        resetMasterForm(); 
-    } else {
-        // Jika aman, pindahkan fokus ke Barcode Item untuk langkah selanjutnya
-        document.getElementById('m_item').focus();
+            let pesan = `⚠️ DATA SUDAH ADA DI SHEET!\nBarcode ${originalBarcode} sudah pernah tersimpan di server.`;
+            let htmlMessage = `<p style="font-size:16px">⚠️ <strong>DATA SUDAH ADA!</strong></p>
+                              <p style="font-size:14px">Barcode: <strong>${originalBarcode}</strong></p>
+                              <p style="font-size:14px">Sudah pernah tersimpan di server.</p>`;
+            
+            // Jika barcode memiliki 0 di awal dan di master tidak ada 0
+            if (originalBarcode.startsWith('0') && originalBarcode !== normalizedBarcode) {
+                htmlMessage += `<p style="font-size:12px; color:#ff9800; margin-top:10px;">
+                                💡 Catatan: Barcode yang Anda scan memiliki awalan 0 (${originalBarcode})<br>
+                                Namun di database tersimpan sebagai ${normalizedBarcode}
+                                </p>`;
+            }
+            
+            await Swal.fire({
+                icon: 'error',
+                title: 'Data Sudah Ada!',
+                html: htmlMessage,
+                confirmButtonColor: '#d33',
+                confirmButtonText: 'OK'
+            });
+            
+            // LANGSUNG BERSIHKAN FORM
+            resetMasterForm(); 
+        } else {
+            // Jika ada perbedaan antara barcode asli dan hasil normalisasi
+            if (originalBarcode !== normalizedBarcode && normalizedBarcode.length > 0) {
+                await Swal.fire({
+                    icon: 'info',
+                    title: 'Informasi Barcode',
+                    html: `<p>Barcode yang discan: <strong>${originalBarcode}</strong></p>
+                           <p>Akan disimpan sebagai: <strong>${normalizedBarcode}</strong></p>
+                           <p style="font-size:12px; color:#666;">(Menghilangkan angka 0 di awal)</p>`,
+                    confirmButtonColor: '#3498db',
+                    confirmButtonText: 'Lanjutkan',
+                    timer: 2000,
+                    showConfirmButton: true
+                });
+            }
+            
+            // Jika aman, pindahkan fokus ke Barcode Item untuk langkah selanjutnya
+            document.getElementById('m_item').focus();
+        }
     }
-}
 
-// Tambahkan Trigger 'Blur' agar saat petugas klik kolom lain, validasi tetap jalan
-document.getElementById('m_dos').onblur = function() {
-    handleDosInput(this.value);
-};
+    // Tambahkan Trigger 'Blur' agar saat petugas klik kolom lain, validasi tetap jalan
+    document.getElementById('m_dos').onblur = function() {
+        handleDosInput(this.value);
+    };
 
-    function findItemMaster(val) {
-        const barcode = val.trim();
-        if (!barcode) return;
-
-        const found = cachedMasterData.find(i => i.barcode === barcode);
-        if (found) {
+    async function findItemMaster(val) {
+        const barcodeAsli = val.trim();
+        if (!barcodeAsli) return;
+        
+        // Cari di master dengan berbagai kemungkinan
+        const result = findBarcodeInMaster(barcodeAsli);
+        
+        if (result) {
+            const found = result.found;
             document.getElementById('m_plu').value = found.plu;
             document.getElementById('m_descp').value = found.descp;
             document.getElementById('m_c2').value = found.c2;
             document.getElementById('m_lokasi').value = found.lokasi;
             document.getElementById('m_tag').value = found.tag;
-            playSound('success');
+            
+            // Jika barcode yang discan memiliki 0 di awal tapi di master tidak
+            if (result.matchedAs === 'normalized' && barcodeAsli.startsWith('0')) {
+                await Swal.fire({
+                    icon: 'success',
+                    title: 'Barcode Ditemukan!',
+                    html: `<p>Barcode yang discan: <strong>${barcodeAsli}</strong></p>
+                           <p>Cocok dengan master: <strong>${found.barcode}</strong></p>`,
+                    confirmButtonColor: '#2ecc71',
+                    confirmButtonText: 'OK',
+                    timer: 1500,
+                    showConfirmButton: true
+                });
+                playSound('success');
+            } else {
+                await Swal.fire({
+                    icon: 'success',
+                    title: 'Berhasil!',
+                    text: 'Barcode Item ditemukan di Master',
+                    confirmButtonColor: '#2ecc71',
+                    confirmButtonText: 'OK',
+                    timer: 1000,
+                    showConfirmButton: false
+                });
+                playSound('success');
+            }
         } else {
             playSound('error');
-            alert("Barcode Item tidak ditemukan di Master!");
+            const normalized = normalizeBarcode(barcodeAsli);
+            let errorMessage = `Barcode Item tidak ditemukan di Master!`;
+            
+            if (normalized !== barcodeAsli) {
+                errorMessage += `\n\nBarcode yang discan: ${barcodeAsli}\nCoba cek dengan format: ${normalized}`;
+                await Swal.fire({
+                    icon: 'error',
+                    title: 'Barcode Tidak Ditemukan',
+                    html: `<p><strong>${barcodeAsli}</strong></p>
+                           <p>Tidak ditemukan di database master.</p>
+                           <p style="font-size:12px; color:#ff9800;">💡 Coba cek dengan format: <strong>${normalized}</strong></p>`,
+                    confirmButtonColor: '#d33',
+                    confirmButtonText: 'OK'
+                });
+            } else {
+                await Swal.fire({
+                    icon: 'error',
+                    title: 'Barcode Tidak Ditemukan',
+                    text: errorMessage,
+                    confirmButtonColor: '#d33',
+                    confirmButtonText: 'OK'
+                });
+            }
             document.getElementById('m_item').value = "";
         }
     }
 
     // --- ANTRIAN ---
-    function queueMaster() {
-        const bDos = document.getElementById('m_dos').value.trim();
+    async function queueMaster() {
+        let bDos = document.getElementById('m_dos').value.trim();
         const bItem = document.getElementById('m_item').value.trim();
 
         if (!bDos || !bItem) {
             playSound('error');
-            return alert("Lengkapi Barcode DOS & ITEM!");
+            await Swal.fire({
+                icon: 'warning',
+                title: 'Data Tidak Lengkap',
+                text: 'Lengkapi Barcode DOS & ITEM terlebih dahulu!',
+                confirmButtonColor: '#ff9800',
+                confirmButtonText: 'OK'
+            });
+            return;
+        }
+        
+        // Normalisasi barcode DOS untuk disimpan (hapus 0 di awal)
+        const normalizedBarcodeDos = normalizeBarcode(bDos);
+        
+        // Tampilkan pesan konfirmasi jika ada perubahan
+        if (bDos !== normalizedBarcodeDos) {
+            const result = await Swal.fire({
+                icon: 'question',
+                title: 'Konfirmasi Barcode',
+                html: `<p>Barcode DOS yang discan: <strong>${bDos}</strong></p>
+                       <p>Akan disimpan sebagai: <strong>${normalizedBarcodeDos}</strong></p>
+                       <p style="font-size:12px; color:#666;">(Menghilangkan angka 0 di awal)</p>`,
+                showCancelButton: true,
+                confirmButtonColor: '#2ecc71',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Ya, Lanjutkan',
+                cancelButtonText: 'Batal'
+            });
+            
+            if (!result.isConfirmed) {
+                return;
+            }
+            
+            // Update input dengan nilai yang sudah dinormalisasi
+            document.getElementById('m_dos').value = normalizedBarcodeDos;
+            bDos = normalizedBarcodeDos;
+        }
+        
+        // Cek sekali lagi setelah normalisasi
+        if (isBarcodeExists(bDos)) {
+            playSound('error');
+            await Swal.fire({
+                icon: 'error',
+                title: 'Data Sudah Ada!',
+                html: `<p>Barcode <strong>${bDos}</strong> sudah pernah tersimpan.</p>
+                       <p>Tidak dapat menambahkan data duplikat.</p>`,
+                confirmButtonColor: '#d33',
+                confirmButtonText: 'OK'
+            });
+            resetMasterForm();
+            return;
         }
 
         const data = {
-            barcodeDos: bDos, barcodeItem: bItem,
+            barcodeDos: bDos,
+            barcodeItem: bItem,
             plu: document.getElementById('m_plu').value,
             descp: document.getElementById('m_descp').value,
             lokasi: document.getElementById('m_lokasi').value,
@@ -169,26 +344,94 @@ document.getElementById('m_dos').onblur = function() {
         localStorage.setItem('q_master', JSON.stringify(queue));
 
         playSound('success');
+        await Swal.fire({
+            icon: 'success',
+            title: 'Data Tersimpan!',
+            html: `<p>Data berhasil ditambahkan ke antrian.</p>
+                   <p>Total antrian: <strong>${queue.length}</strong> data</p>`,
+            confirmButtonColor: '#2ecc71',
+            confirmButtonText: 'OK',
+            timer: 1500,
+            showConfirmButton: true
+        });
         resetMasterForm();
         updateBadge();
     }
 
     async function syncBatch() {
         const queue = JSON.parse(localStorage.getItem('q_master') || "[]");
-        if (queue.length === 0) return alert("Tidak ada data dikirim.");
+        if (queue.length === 0) {
+            await Swal.fire({
+                icon: 'info',
+                title: 'Tidak Ada Data',
+                text: 'Tidak ada data yang akan dikirim.',
+                confirmButtonColor: '#3498db',
+                confirmButtonText: 'OK'
+            });
+            return;
+        }
 
-        showLoader("Mengirim...");
+        const result = await Swal.fire({
+            icon: 'question',
+            title: 'Konfirmasi Kirim Data',
+            html: `<p>Anda akan mengirim <strong>${queue.length}</strong> data ke server.</p>
+                   <p>Pastikan koneksi internet stabil!</p>`,
+            showCancelButton: true,
+            confirmButtonColor: '#2ecc71',
+            cancelButtonColor: '#d33',
+            confirmButtonText: 'Ya, Kirim!',
+            cancelButtonText: 'Batal'
+        });
+        
+        if (!result.isConfirmed) return;
+
+        showLoader("Mengirim data ke server...");
         try {
-            const res = await fetch(G_SCRIPT_URL, { method: 'POST', body: JSON.stringify({ action: "syncBatch", data: queue }) });
+            const res = await fetch(G_SCRIPT_URL, { 
+                method: 'POST', 
+                body: JSON.stringify({ action: "syncBatch", data: queue }) 
+            });
             const out = await res.json();
+            hideLoader();
+            
             if (out.status === "success") {
-                queue.forEach(i => savedBarcodesFromServer.push(i.barcodeDos));
+                // Simpan barcode DOS yang sudah dinormalisasi ke server list
+                queue.forEach(i => {
+                    const normalized = normalizeBarcode(i.barcodeDos);
+                    if (!savedBarcodesFromServer.includes(normalized)) {
+                        savedBarcodesFromServer.push(normalized);
+                    }
+                });
                 localStorage.setItem('q_master', "[]");
                 updateBadge();
-                alert("Berhasil Terkirim!");
+                
+                await Swal.fire({
+                    icon: 'success',
+                    title: 'Berhasil Terkirim!',
+                    html: `<p>${queue.length} data berhasil dikirim ke server.</p>`,
+                    confirmButtonColor: '#2ecc71',
+                    confirmButtonText: 'OK'
+                });
+            } else {
+                await Swal.fire({
+                    icon: 'error',
+                    title: 'Gagal Kirim!',
+                    text: out.message || 'Terjadi kesalahan pada server',
+                    confirmButtonColor: '#d33',
+                    confirmButtonText: 'OK'
+                });
             }
-        } catch (e) { alert("Gagal Kirim!"); }
-        hideLoader();
+        } catch (e) { 
+            hideLoader();
+            await Swal.fire({
+                icon: 'error',
+                title: 'Koneksi Gagal!',
+                text: 'Periksa koneksi internet Anda.\n' + e.message,
+                confirmButtonColor: '#d33',
+                confirmButtonText: 'OK'
+            });
+            console.error(e);
+        }
     }
 
     // --- UI HELPER ---
@@ -203,12 +446,73 @@ document.getElementById('m_dos').onblur = function() {
         document.getElementById('m_dos').focus();
     }
 
-    function showLoader(t) { document.getElementById('loader-text').innerText = t; document.getElementById('loader').style.display = 'flex'; }
-    function hideLoader() { document.getElementById('loader').style.display = 'none'; }
+    function showLoader(text) {
+        document.getElementById('loader-text').innerText = text;
+        document.getElementById('loader').style.display = 'flex';
+    }
+    
+    function hideLoader() { 
+        document.getElementById('loader').style.display = 'none'; 
+    }
+
+    // --- INIT ---
+    async function initApp() {
+        showLoader("Sinkronisasi Database...");
+        try {
+            const res = await fetch(G_SCRIPT_URL, { 
+                method: 'POST', 
+                body: JSON.stringify({ action: "getAllMaster" }) 
+            });
+            const out = await res.json();
+            hideLoader();
+            
+            if (out.status === "success") {
+                cachedMasterData = out.data;
+                savedBarcodesFromServer = out.savedList || [];
+                console.log("Master Loaded:", cachedMasterData.length);
+                console.log("Saved Barcodes:", savedBarcodesFromServer.length);
+                
+                await Swal.fire({
+                    icon: 'success',
+                    title: 'Koneksi Berhasil',
+                    html: `<p>Data master: <strong>${cachedMasterData.length}</strong> item</p>
+                           <p>Data tersimpan: <strong>${savedBarcodesFromServer.length}</strong> barcode</p>`,
+                    confirmButtonColor: '#2ecc71',
+                    confirmButtonText: 'Mulai',
+                    timer: 2000,
+                    showConfirmButton: true
+                });
+            } else {
+                await Swal.fire({
+                    icon: 'error',
+                    title: 'Gagal Load Data',
+                    text: 'Gagal mengambil data dari server',
+                    confirmButtonColor: '#d33',
+                    confirmButtonText: 'OK'
+                });
+            }
+        } catch (e) { 
+            hideLoader();
+            await Swal.fire({
+                icon: 'error',
+                title: 'Koneksi Error!',
+                text: 'Cek koneksi internet / URL Script\n' + e.message,
+                confirmButtonColor: '#d33',
+                confirmButtonText: 'OK'
+            });
+            console.error(e);
+        }
+        updateBadge();
+        resetMasterForm();
+    }
 
     // Event Triggers
-    document.getElementById('m_dos').onkeydown = (e) => { if(e.key === "Enter") handleDosInput(e.target.value); };
-    document.getElementById('m_item').onkeydown = (e) => { if(e.key === "Enter") findItemMaster(e.target.value); };
+    document.getElementById('m_dos').onkeydown = (e) => { 
+        if(e.key === "Enter") handleDosInput(e.target.value); 
+    };
+    document.getElementById('m_item').onkeydown = (e) => { 
+        if(e.key === "Enter") findItemMaster(e.target.value); 
+    };
 
     function startScanner(tid) {
         document.getElementById('reader-container').style.display = 'flex';
@@ -220,6 +524,7 @@ document.getElementById('m_dos').onblur = function() {
             stopScanner();
         }).catch(() => stopScanner());
     }
+    
     function stopScanner() { 
         if(html5QrCode) {
             html5QrCode.stop().then(() => {
